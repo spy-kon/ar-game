@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AR Πάτρα — Πολιτιστική Διαδρομή</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      overflow-x: hidden;
+    }
+
+    .app-header {
+      background: linear-gradient(135deg, #0066a1 0%, #004d7a 100%);
+      color: white;
+      padding: 16px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .app-header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .app-header .subtitle {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    .gps-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      margin-top: 6px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 12px;
+      width: fit-content;
+    }
+
+    .gps-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ff3b30;
+    }
+
+    .gps-dot.active {
+      background: #30d158;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    #map {
+      height: 280px;
+      width: 100%;
+      background: #e5e5ea;
+    }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+      background: #d1d1d6;
+    }
+
+    .stat {
+      background: white;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0066a1;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #6e6e73;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+
+    .poi-list {
+      padding: 12px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      color: #6e6e73;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 8px 4px 12px;
+      font-weight: 600;
+    }
+
+    .poi-card {
+      background: white;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      transition: all 0.3s ease;
+      border: 2px solid transparent;
+    }
+
+    .poi-card.unlocked {
+      border-color: #30d158;
+      box-shadow: 0 2px 12px rgba(48,209,88,0.15);
+    }
+
+    .poi-card.completed {
+      opacity: 0.6;
+    }
+
+    .poi-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .poi-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: #e5e5ea;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .poi-card.unlocked .poi-icon {
+      background: #d1f4d9;
+    }
+
+    .poi-title {
+      flex: 1;
+    }
+
+    .poi-name {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .poi-location {
+      font-size: 12px;
+      color: #6e6e73;
+    }
+
+    .poi-status-badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-locked { background: #f2f2f7; color: #6e6e73; }
+    .badge-near { background: #fff4e5; color: #ff9500; }
+    .badge-unlocked { background: #d1f4d9; color: #248a3d; }
+    .badge-completed { background: #e5e5ea; color: #6e6e73; }
+
+    .poi-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+
+    .info-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #3c3c43;
+    }
+
+    .progress-container {
+      margin: 10px 0;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: #e5e5ea;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ff3b30 0%, #ff9500 50%, #30d158 100%);
+      transition: width 0.5s ease;
+      border-radius: 3px;
+    }
+
+    .poi-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: #0066a1;
+      color: white;
+    }
+
+    .btn-primary:disabled {
+      background: #c7c7cc;
+      cursor: not-allowed;
+    }
+
+    .btn-primary:not(:disabled):active {
+      transform: scale(0.98);
+      background: #004d7a;
+    }
+
+    .btn-secondary {
+      background: #f2f2f7;
+      color: #0066a1;
+    }
+
+    .btn-ar {
+      background: linear-gradient(135deg, #30d158 0%, #248a3d 100%);
+      color: white;
+      animation: glow 2s infinite;
+    }
+
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(48,209,88,0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(48,209,88,0); }
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .modal-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    .modal h2 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .modal p {
+      color: #6e6e73;
+      font-size: 14px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .ar-mock {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: white;
+      border-radius: 16px;
+      padding: 24px;
+      margin: 16px 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ar-mock::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(48,209,88,0.1) 0%, transparent 70%);
+      animation: rotate 10s linear infinite;
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .ar-mock-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .ar-badge {
+      display: inline-block;
+      background: rgba(48,209,88,0.2);
+      color: #30d158;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    .passport-container {
+      background: white;
+      margin: 12px;
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .passport-title {
+      font-size: 14px;
+      color: #6e6e73;
+      margin-bottom: 12px;
+    }
+
+    .stamps {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .stamp {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #f2f2f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      position: relative;
+    }
+
+    .stamp.earned {
+      background: #d1f4d9;
+      border: 2px solid #30d158;
+    }
+
+    .stamp.earned::after {
+      content: '✓';
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 18px;
+      height: 18px;
+      background: #30d158;
+      color: white;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .simulator-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #1d1d1f;
+      color: white;
+      padding: 12px 16px;
+      z-index: 99;
+      font-size: 12px;
+      border-top: 2px solid #ff9500;
+    }
+
+    .simulator-panel h3 {
+      font-size: 11px;
+      color: #ff9500;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .sim-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .sim-btn {
+      background: #3a3a3c;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .sim-btn:active {
+      background: #ff9500;
+    }
+
+    .pulse-marker {
+      width: 20px;
+      height: 20px;
+      background: #0066a1;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 0 0 0 rgba(0,102,161,0.7);
+      animation: markerPulse 2s infinite;
+    }
+
+    @keyframes markerPulse {
+      0% { box-shadow: 0 0 0 0 rgba(0,102,161,0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(0,102,161,0); }
+      100% { box-shadow: 0 0 0 0 rgba(0,102,161,0); }
+    }
+
+    .padding-bottom {
+      height: 140px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-header">
+    <h1>🏛️ AR Πάτρα</h1>
+    <div class="subtitle">Πολιτιστική Διαδρομή · Περιφέρεια Δυτικής Ελλάδας</div>
+    <div class="gps-status">
+      <span class="gps-dot" id="gpsDot"></span>
+      <span id="gpsStatus">Αναμονή GPS...</span>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value" id="statCompleted">0</div>
+      <div class="stat-label">Ολοκληρωμένα</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="statTotal">5</div>
+      <div class="stat-label">Συνολικά</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="statDistance">—</div>
+      <div class="stat-label">Πλησιέστερο</div>
+    </div>
+  </div>
+
+  <div class="passport-container">
+    <div class="passport-title">📖 Διαβατήριο Πάτρας</div>
+    <div class="stamps" id="stampsContainer"></div>
+  </div>
+
+  <div class="poi-list">
+    <div class="section-title">Σημεία Ενδιαφέροντος</div>
+    <div id="poiContainer"></div>
+  </div>
+
+  <div class="padding-bottom"></div>
+
+  <!-- Modal για AR activation -->
+  <div class="modal-overlay" id="arModal">
+    <div class="modal">
+      <div class="modal-icon" id="modalIcon">📱</div>
+      <h2 id="modalTitle">Σκανάρισμα κάρτας</h2>
+      <p id="modalDesc">Στρέψε την κάμερα προς την κάρτα που θα βρεις στο stand.</p>
+
+      <div class="ar-mock">
+        <div class="ar-mock-content">
+          <div class="ar-badge">● AR ΕΝΕΡΓΟ</div>
+          <h3 id="arContentTitle">Φόρτωση...</h3>
+          <p id="arContentDesc" style="margin-top: 8px; opacity: 0.8; font-size: 13px;"></p>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-secondary" onclick="closeModal()">Κλείσιμο</button>
+        <button class="btn btn-primary" onclick="completePoi()">Ολοκλήρωση ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulator Panel για testing -->
+  <div class="simulator-panel">
+    <h3>🧪 GPS Simulator (για testing)</h3>
+    <div class="sim-buttons">
+      <button class="sim-btn" onclick="simulatePosition(38.2466, 21.7346)">Απόλλων</button>
+      <button class="sim-btn" onclick="simulatePosition(38.2471, 21.7340)">Σιντριβάνια</button>
+      <button class="sim-btn" onclick="simulatePosition(38.2489, 21.7361)">Ρωμ. Ωδείο</button>
+      <button class="sim-btn" onclick="simulatePosition(38.2455, 21.7321)">Αγ. Νικόλαος</button>
+      <button class="sim-btn" onclick="simulatePosition(38.2438, 21.7305)">Λιμάνι</button>
+      <button class="sim-btn" onclick="simulatePosition(38.2500, 21.7400)">Μακριά</button>
+      <button class="sim-btn" onclick="useRealGPS()" style="background: #30d158;">📡 Real GPS</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // ====== POIs στην Πάτρα ======
+    const POIS = [
+      {
+        id: 'apollon',
+        name: 'Δημοτικό Θέατρο Απόλλων',
+        location: 'Πλατεία Γεωργίου Α\'',
+        icon: '🎭',
+        lat: 38.2466,
+        lng: 21.7346,
+        radius: 40,
+        arContent: {
+          title: 'Ο Απόλλων στα 1872',
+          desc: 'Ο αρχιτέκτονας Ερνέστος Τσίλλερ σχεδίασε το θέατρο ως αντίγραφο του La Scala του Μιλάνου. Δες σε AR τον Τσίλλερ να παρουσιάζει τα σχέδια του.'
+        }
+      },
+      {
+        id: 'fountains',
+        name: 'Σιντριβάνια με τα Λιοντάρια',
+        location: 'Πλατεία Γεωργίου Α\'',
+        icon: '⛲',
+        lat: 38.2471,
+        lng: 21.7340,
+        radius: 40,
+        arContent: {
+          title: 'Το Τραμ της Πάτρας',
+          desc: 'Το 1902 λειτούργησε το πρώτο ηλεκτρικό τραμ. Δες την Πλατεία Γεωργίου με κίνηση εποχής και ακούσε τους ήχους της Μπελ Επόκ.'
+        }
+      },
+      {
+        id: 'roman',
+        name: 'Ρωμαϊκό Ωδείο',
+        location: 'Άνω Πόλη',
+        icon: '🏛️',
+        lat: 38.2489,
+        lng: 21.7361,
+        radius: 40,
+        arContent: {
+          title: 'Η Ρωμαϊκή Πάτρα',
+          desc: 'Χτισμένο τον 2ο αι. μ.Χ. Δες το Ωδείο ολοκληρωμένο σε 3D reconstruction, με 2300 θέσες και ακούσε αρχαία μουσική.'
+        }
+      },
+      {
+        id: 'agios',
+        name: 'Άγιος Νικόλαος',
+        location: 'Κλίμακα Αγ. Νικολάου',
+        icon: '⛪',
+        lat: 38.2455,
+        lng: 21.7321,
+        radius: 40,
+        arContent: {
+          title: 'Η Κλίμακα του Μπελ Επόκ',
+          desc: 'Τα 192 σκαλιά χτίστηκαν το 1930. Ιστορικές φωτογραφίες δείχνουν την άνω και κάτω πόλη να ενώνονται για πρώτη φορά.'
+        }
+      },
+      {
+        id: 'harbor',
+        name: 'Παλιό Λιμάνι',
+        location: 'Ακτή Δυμαίων',
+        icon: '⚓',
+        lat: 38.2438,
+        lng: 21.7305,
+        radius: 40,
+        arContent: {
+          title: 'Το Λιμάνι της Σταφίδας',
+          desc: 'Στα 1880, η Πάτρα ήταν το κέντρο εξαγωγής σταφίδας για όλη την Ευρώπη. Δες ιστιοφόρα, εμπόρους και αποθήκες εποχής.'
+        }
+      }
+    ];
+
+    // ====== State ======
+    let userPosition = null;
+    let userMarker = null;
+    let map = null;
+    let currentPoiId = null;
+    let completedPois = new Set();
+    let useSimulator = true;
+    let watchId = null;
+
+    // ====== Φόρτωση από LocalStorage ======
+    try {
+      const saved = localStorage.getItem('completedPois');
+      if (saved) completedPois = new Set(JSON.parse(saved));
+    } catch(e) {}
+
+    // ====== Haversine formula ======
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(Δφ / 2) ** 2 +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    // ====== Έξυπνο format απόστασης ======
+    function formatDistance(meters) {
+      if (meters < 30) return 'Είσαι εδώ!';
+      if (meters < 100) return `~${Math.round(meters / 5) * 5}μ`;
+      if (meters < 1000) return `~${Math.round(meters / 25) * 25}μ`;
+      return `${(meters / 1000).toFixed(1)}χλμ`;
+    }
+
+    // ====== Υπολογισμός χρόνου περπατήματος ======
+    function formatWalkTime(meters) {
+      if (meters < 50) return 'Εδώ';
+      const minutes = Math.ceil(meters / 80);
+      if (minutes === 1) return '1 λεπτό';
+      return `${minutes} λεπτά`;
+    }
+
+    // ====== Κατεύθυνση σε κείμενο ======
+    function getBearing(lat1, lon1, lat2, lon2) {
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) -
+                Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      const θ = Math.atan2(y, x);
+      return (θ * 180 / Math.PI + 360) % 360;
+    }
+
+    function bearingToText(bearing) {
+      const dirs = ['Β', 'ΒΑ', 'Α', 'ΝΑ', 'Ν', 'ΝΔ', 'Δ', 'ΒΔ'];
+      return dirs[Math.round(bearing / 45) % 8];
+    }
+
+    // ====== Αρχικοποίηση χάρτη ======
+    function initMap() {
+      map = L.map('map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([38.2466, 21.7346], 16);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+      }).addTo(map);
+
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      // POI markers
+      POIS.forEach(poi => {
+        const icon = L.divIcon({
+          html: `<div style="background: white; border: 3px solid #0066a1; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">${poi.icon}</div>`,
+          className: '',
+          iconSize: [40, 40],
+          iconAnchor: [20, 20]
+        });
+        L.marker([poi.lat, poi.lng], { icon }).addTo(map).bindPopup(`<b>${poi.name}</b><br>${poi.location}`);
+
+        // Radius circle
+        L.circle([poi.lat, poi.lng], {
+          radius: poi.radius,
+          color: '#30d158',
+          fillColor: '#30d158',
+          fillOpacity: 0.1,
+          weight: 1,
+          dashArray: '4, 4'
+        }).addTo(map);
+      });
+    }
+
+    // ====== Update user location ======
+    function updateUserPosition(lat, lng) {
+      userPosition = { lat, lng };
+
+      if (!userMarker) {
+        const userIcon = L.divIcon({
+          html: `<div class="pulse-marker"></div>`,
+          className: '',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+        userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+      } else {
+        userMarker.setLatLng([lat, lng]);
+      }
+
+      document.getElementById('gpsDot').classList.add('active');
+      document.getElementById('gpsStatus').textContent = useSimulator ? 'Simulator ενεργό' : 'GPS ενεργό';
+
+      renderPois();
+    }
+
+    // ====== Render POI cards ======
+    function renderPois() {
+      const container = document.getElementById('poiContainer');
+      container.innerHTML = '';
+
+      let nearestDistance = Infinity;
+
+      const poisWithDistance = POIS.map(poi => {
+        const dist = userPosition ? getDistance(userPosition.lat, userPosition.lng, poi.lat, poi.lng) : null;
+        if (dist !== null && dist < nearestDistance) nearestDistance = dist;
+        return { ...poi, distance: dist };
+      });
+
+      // Ταξινόμηση: ξεκλείδωτα πρώτα, μετά κατά απόσταση
+      poisWithDistance.sort((a, b) => {
+        if (completedPois.has(a.id) && !completedPois.has(b.id)) return 1;
+        if (!completedPois.has(a.id) && completedPois.has(b.id)) return -1;
+        if (a.distance === null) return 1;
+        if (b.distance === null) return -1;
+        return a.distance - b.distance;
+      });
+
+      poisWithDistance.forEach(poi => {
+        const isCompleted = completedPois.has(poi.id);
+        const isUnlocked = poi.distance !== null && poi.distance <= poi.radius;
+        const isNear = poi.distance !== null && poi.distance <= 100 && !isUnlocked;
+
+        let status = 'locked';
+        let statusText = 'Κλειδωμένο';
+        let statusClass = 'badge-locked';
+
+        if (isCompleted) {
+          status = 'completed';
+          statusText = 'Ολοκληρώθηκε';
+          statusClass = 'badge-completed';
+        } else if (isUnlocked) {
+          status = 'unlocked';
+          statusText = 'Ξεκλειδώθηκε!';
+          statusClass = 'badge-unlocked';
+        } else if (isNear) {
+          status = 'near';
+          statusText = 'Πλησιάζεις';
+          statusClass = 'badge-near';
+        }
+
+        // Progress bar calculation
+        let progressPct = 0;
+        if (poi.distance !== null) {
+          if (poi.distance <= poi.radius) progressPct = 100;
+          else if (poi.distance <= 500) progressPct = Math.max(0, 100 - ((poi.distance - poi.radius) / (500 - poi.radius)) * 100);
+        }
+
+        const bearing = userPosition ? getBearing(userPosition.lat, userPosition.lng, poi.lat, poi.lng) : 0;
+
+        const card = document.createElement('div');
+        card.className = `poi-card ${isUnlocked ? 'unlocked' : ''} ${isCompleted ? 'completed' : ''}`;
+
+        card.innerHTML = `
+          <div class="poi-header">
+            <div class="poi-icon">${poi.icon}</div>
+            <div class="poi-title">
+              <div class="poi-name">${poi.name}</div>
+              <div class="poi-location">${poi.location}</div>
+            </div>
+            <div class="poi-status-badge ${statusClass}">${statusText}</div>
+          </div>
+
+          ${poi.distance !== null ? `
+            <div class="poi-info">
+              <div class="info-item">📍 <strong>${formatDistance(poi.distance)}</strong></div>
+              <div class="info-item">🧭 ${bearingToText(bearing)}</div>
+              <div class="info-item">⏱️ ${formatWalkTime(poi.distance)}</div>
+            </div>
+
+            <div class="progress-container">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: ${progressPct}%"></div>
+              </div>
+            </div>
+          ` : `
+            <div class="poi-info">
+              <div class="info-item" style="color: #6e6e73;">Αναμονή GPS...</div>
+            </div>
+          `}
+
+          <div class="poi-actions">
+            <button class="btn btn-secondary" onclick="showOnMap('${poi.id}')">🗺️ Χάρτης</button>
+            ${isCompleted
+              ? `<button class="btn btn-secondary" disabled>✓ Ολοκληρώθηκε</button>`
+              : isUnlocked
+                ? `<button class="btn btn-ar" onclick="activateAR('${poi.id}')">📱 Σκάναρε κάρτα</button>`
+                : `<button class="btn btn-primary" disabled>🔒 Πλησίασε το σημείο</button>`
+            }
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+
+      // Update stats
+      document.getElementById('statCompleted').textContent = completedPois.size;
+      document.getElementById('statDistance').textContent = nearestDistance === Infinity ? '—' : formatDistance(nearestDistance);
+
+      renderPassport();
+    }
+
+    // ====== Passport stamps ======
+    function renderPassport() {
+      const container = document.getElementById('stampsContainer');
+      container.innerHTML = POIS.map(poi => `
+        <div class="stamp ${completedPois.has(poi.id) ? 'earned' : ''}" title="${poi.name}">
+          ${poi.icon}
+        </div>
+      `).join('');
+    }
+
+    // ====== Εμφάνιση στον χάρτη ======
+    function showOnMap(poiId) {
+      const poi = POIS.find(p => p.id === poiId);
+      if (poi) {
+        map.setView([poi.lat, poi.lng], 18);
+        document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    // ====== Ενεργοποίηση AR ======
+    function activateAR(poiId) {
+      const poi = POIS.find(p => p.id === poiId);
+      if (!poi) return;
+      currentPoiId = poiId;
+
+      document.getElementById('modalIcon').textContent = poi.icon;
+      document.getElementById('modalTitle').textContent = poi.name;
+      document.getElementById('modalDesc').textContent = `Στρέψε την κάμερα στην κάρτα που θα βρεις στο stand.`;
+      document.getElementById('arContentTitle').textContent = poi.arContent.title;
+      document.getElementById('arContentDesc').textContent = poi.arContent.desc;
+
+      document.getElementById('arModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('arModal').classList.remove('active');
+      currentPoiId = null;
+    }
+
+    function completePoi() {
+      if (currentPoiId) {
+        completedPois.add(currentPoiId);
+        try {
+          localStorage.setItem('completedPois', JSON.stringify([...completedPois]));
+        } catch(e) {}
+        renderPois();
+
+        // Έλεγχος ολοκλήρωσης όλων
+        if (completedPois.size === POIS.length) {
+          setTimeout(() => {
+            alert('🎉 Συγχαρητήρια! Ολοκλήρωσες τη διαδρομή της Πάτρας!');
+          }, 300);
+        }
+      }
+      closeModal();
+    }
+
+    // ====== GPS Simulator ======
+    function simulatePosition(lat, lng) {
+      useSimulator = true;
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      updateUserPosition(lat, lng);
+      map.setView([lat, lng], 17);
+    }
+
+    function useRealGPS() {
+      useSimulator = false;
+      document.getElementById('gpsStatus').textContent = 'Ζήτηση permission...';
+
+      if (!navigator.geolocation) {
+        alert('Το GPS δεν υποστηρίζεται από αυτόν τον browser.');
+        return;
+      }
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          updateUserPosition(pos.coords.latitude, pos.coords.longitude);
+          map.setView([pos.coords.latitude, pos.coords.longitude], 16);
+        },
+        (err) => {
+          document.getElementById('gpsStatus').textContent = 'GPS error: ' + err.message;
+          alert('Δεν δόθηκε permission για GPS. Χρησιμοποίησε το Simulator.');
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
+    }
+
+    // ====== Init ======
+    document.getElementById('statTotal').textContent = POIS.length;
+    initMap();
+    renderPois();
+
+    // Ξεκινάει με simulated θέση μακριά
+    setTimeout(() => simulatePosition(38.2500, 21.7400), 500);
+  </script>
+</body>
+</html>
