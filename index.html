@@ -594,16 +594,15 @@
       videoFolder: 'videos/',
 
       // ──────────────────────────────────────────────────────────────────
-      // Aspect ratio της φυσικής κάρτας (width / height)
+      // Aspect ratio της φυσικής κάρτας (FALLBACK μόνο)
       // ──────────────────────────────────────────────────────────────────
-      // Παραδείγματα:
-      //   1.0   = τετράγωνη κάρτα
-      //   1.414 = A-series κάθετη (A4, A5, A6 — ίδιο ratio)
-      //   0.707 = A-series οριζόντια
-      //   1.5   = πιστωτική κάρτα (~85.6mm × 53.98mm)
-      //   1.778 = 16:9
-      // Αυτό πρέπει να ταιριάζει με την εικόνα που μεταγλώττισες στο MindAR.
-      cardAspectRatio: 1.5,
+      // ΣΗΜΑΝΤΙΚΟ: Το aspect ratio ανιχνεύεται αυτόματα από το .mind αρχείο
+      // όταν αυτό φορτωθεί. Αυτή η τιμή χρησιμοποιείται μόνο ως fallback
+      // αν για κάποιο λόγο αποτύχει η αυτόματη ανίχνευση.
+      //
+      // Άρα μπορείς να αλλάξεις postcard size όποτε θες — απλά αναβάθμιζε
+      // το .mind αρχείο και η εφαρμογή θα προσαρμοστεί αυτόματα.
+      cardAspectRatio: 1.414,
 
       // ──────────────────────────────────────────────────────────────────
       // Default ραδιούς ξεκλειδώματος (μέτρα), αν το POI δεν ορίζει δικό του
@@ -1014,10 +1013,11 @@
       const target = document.createElement('a-entity');
       target.setAttribute('mindar-image-target', 'targetIndex: 0');
 
-      // Το MindAR plane έχει διαστάσεις: width=1, height=(1/cardAspectRatio)
-      // Δηλαδή το πλάτος είναι πάντα 1 unit, το ύψος ανάλογα του aspect ratio.
-      const cardWidth = 1;
-      const cardHeight = 1 / CONFIG.cardAspectRatio;
+      // Ξεκινάμε με fallback διαστάσεις από το CONFIG.
+      // Αυτές θα ενημερωθούν αυτόματα όταν το MindAR φορτώσει το target
+      // και μάθουμε το πραγματικό aspect ratio της κάρτας.
+      let cardWidth = 1;
+      let cardHeight = 1 / CONFIG.cardAspectRatio;
 
       // Μαύρο background plane που καλύπτει όλη την κάρτα — letterbox effect
       // ώστε όταν το video δεν γεμίζει την κάρτα, να φαίνεται μαύρο γύρω του.
@@ -1039,12 +1039,46 @@
       target.appendChild(videoPlane);
       scene.appendChild(target);
 
+      // ─── Auto-detect του card aspect ratio από το MindAR target ───
+      // Όταν το MindAR φορτώσει το .mind αρχείο, διαβάζουμε τις διαστάσεις
+      // του πρώτου target και υπολογίζουμε το σωστό aspect ratio.
+      let detectedCardAspect = CONFIG.cardAspectRatio; // fallback
+
+      scene.addEventListener('arReady', () => {
+        try {
+          const mindarSystem = scene.systems['mindar-image-system'];
+          if (mindarSystem && mindarSystem.controller && mindarSystem.controller.imageTargets) {
+            const firstTarget = mindarSystem.controller.imageTargets[0];
+            if (firstTarget && firstTarget.dimensions) {
+              const [w, h] = firstTarget.dimensions;
+              detectedCardAspect = w / h;
+
+              // Ενημέρωση των planes με τις σωστές διαστάσεις
+              cardWidth = 1;
+              cardHeight = 1 / detectedCardAspect;
+              bgPlane.setAttribute('width', cardWidth);
+              bgPlane.setAttribute('height', cardHeight);
+
+              console.log(`✓ Card auto-detected: ${w}×${h} px (ratio ${detectedCardAspect.toFixed(3)})`);
+
+              // Επανυπολογίζουμε και το video plane αν τα metadata έχουν φορτώσει
+              recalculateVideoPlane();
+            }
+          }
+        } catch(err) {
+          console.warn('Card auto-detect failed, using fallback:', err);
+        }
+      });
+
       // ─── object-fit: contain logic ───
-      // Όταν φορτώσουν τα metadata του video, υπολογίζουμε σωστές διαστάσεις
-      // ώστε το video να χωράει στην κάρτα χωρίς παραμόρφωση/cropping.
-      video.addEventListener('loadedmetadata', () => {
+      // Υπολογίζει σωστές διαστάσεις του video plane ώστε να χωράει στην κάρτα
+      // χωρίς παραμόρφωση/cropping. Καλείται όταν αλλάξει είτε το video είτε
+      // οι διαστάσεις της κάρτας.
+      function recalculateVideoPlane() {
+        if (!video.videoWidth || !video.videoHeight) return;
+
         const videoAspect = video.videoWidth / video.videoHeight;
-        const cardAspect = CONFIG.cardAspectRatio;
+        const cardAspect = detectedCardAspect;
 
         let finalWidth, finalHeight;
 
@@ -1061,8 +1095,10 @@
         videoPlane.setAttribute('width', finalWidth);
         videoPlane.setAttribute('height', finalHeight);
 
-        console.log(`Video: ${video.videoWidth}×${video.videoHeight} (ratio ${videoAspect.toFixed(2)}) | Card ratio: ${cardAspect} | Plane: ${finalWidth.toFixed(3)}×${finalHeight.toFixed(3)}`);
-      });
+        console.log(`Video: ${video.videoWidth}×${video.videoHeight} (ratio ${videoAspect.toFixed(2)}) | Card ratio: ${cardAspect.toFixed(3)} | Plane: ${finalWidth.toFixed(3)}×${finalHeight.toFixed(3)}`);
+      }
+
+      video.addEventListener('loadedmetadata', recalculateVideoPlane);
 
       container.appendChild(scene);
 
