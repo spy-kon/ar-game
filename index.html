@@ -389,6 +389,13 @@
 
     .ar-complete-btn.visible { display: block; }
 
+    /* Hide A-Frame's auto-injected fullscreen/VR/AR buttons completely */
+    .a-enter-vr,
+    .a-enter-ar,
+    .a-orientation-modal {
+      display: none !important;
+    }
+
     .passport-container {
       background: white;
       margin: 12px;
@@ -500,6 +507,17 @@
     }
 
     .padding-bottom { height: 140px; }
+
+    /* Class που εφαρμόζεται στο body όταν είναι ενεργό το AR — απαγορεύει
+       scroll στο underlying page. Το αφαιρούμε στο close. */
+    body.ar-active {
+      overflow: hidden !important;
+      height: 100vh !important;
+      position: fixed !important;
+      width: 100% !important;
+      top: 0 !important;
+      left: 0 !important;
+    }
   </style>
 </head>
 <body>
@@ -574,56 +592,34 @@
     // ========================================================================
     // ╔══════════════════════════════════════════════════════════════════════╗
     // ║                         CONFIGURATION                                ║
-    // ║  Όλες οι ρυθμίσεις του app είναι εδώ. Άλλαξε ό,τι θες χωρίς να       ║
-    // ║  ψάχνεις στον υπόλοιπο κώδικα.                                       ║
     // ╚══════════════════════════════════════════════════════════════════════╝
     // ========================================================================
 
     const CONFIG = {
-      // ──────────────────────────────────────────────────────────────────
-      // MindAR Image Target (κοινό για όλα τα σημεία)
-      // ──────────────────────────────────────────────────────────────────
-      // Ανέβασε το .mind αρχείο στον φάκελο /ar/targets/ και βάλε εδώ το path.
-      // Παράδειγμα: 'targets/patra-card.mind'
       mindARTargetFile: 'targets/patra-card.mind',
-
-      // ──────────────────────────────────────────────────────────────────
-      // Φάκελος όπου ανεβάζεις τα videos
-      // ──────────────────────────────────────────────────────────────────
-      // Π.χ. 'videos/' σημαίνει ότι τα video files είναι στο /ar/videos/
       videoFolder: 'videos/',
 
       // ──────────────────────────────────────────────────────────────────
-      // Aspect ratio της φυσικής κάρτας (FALLBACK μόνο)
+      // Aspect ratio της κάρτας (FALLBACK — το πραγματικό ανιχνεύεται από το .mind)
       // ──────────────────────────────────────────────────────────────────
-      // ΣΗΜΑΝΤΙΚΟ: Το aspect ratio ανιχνεύεται αυτόματα από το .mind αρχείο
-      // όταν αυτό φορτωθεί. Αυτή η τιμή χρησιμοποιείται μόνο ως fallback
-      // αν για κάποιο λόγο αποτύχει η αυτόματη ανίχνευση.
-      //
-      // Άρα μπορείς να αλλάξεις postcard size όποτε θες — απλά αναβάθμιζε
-      // το .mind αρχείο και η εφαρμογή θα προσαρμοστεί αυτόματα.
       cardAspectRatio: 0.5625,
 
       // ──────────────────────────────────────────────────────────────────
-      // Default ραδιούς ξεκλειδώματος (μέτρα), αν το POI δεν ορίζει δικό του
+      // Transparency για WebM videos με alpha channel
       // ──────────────────────────────────────────────────────────────────
-      defaultRadius: 50,
+      // true  = Τα videos είναι WebM με alpha (transparent background)
+      //         → δεν εμφανίζεται μαύρο background, φαίνεται η πραγματική κάρτα
+      // false = Τα videos είναι κανονικά (mp4 ή webm χωρίς alpha)
+      //         → εμφανίζεται μαύρο letterbox background
+      videoHasAlpha: true,
 
-      // ──────────────────────────────────────────────────────────────────
-      // Initial map center (πριν το πρώτο GPS fix)
-      // ──────────────────────────────────────────────────────────────────
+      defaultRadius: 50,
       initialMapCenter: [38.2614, 21.7504],
       initialMapZoom: 14
     };
 
     // ========================================================================
-    // POIs — Σημεία Ενδιαφέροντος
-    // ========================================================================
-    // Για να προσθέσεις νέο σημείο, αντίγραψε ένα από τα παρακάτω blocks και
-    // άλλαξε τις τιμές. Το `id` πρέπει να είναι μοναδικό (αγγλικά, no spaces).
-    //
-    // ΥΠΟΧΡΕΩΤΙΚΑ: id, name, lat, lng, video
-    // ΠΡΟΑΙΡΕΤΙΚΑ: location, icon, radius, arTitle, arDescription
+    // POIs
     // ========================================================================
 
     const POIS = [
@@ -675,24 +671,10 @@
         arTitle: 'Ο Φάρος της Πάτρας',
         arDescription: 'Ιστορία και σημασία του φάρου.'
       }
-
-      // ─── Πρότυπο για νέο σημείο (αντίγραψέ το όταν θες να προσθέσεις) ───
-      // ,{
-      //   id: 'unique-id',
-      //   name: 'Όνομα σημείου',
-      //   location: 'Σύντομη τοποθεσία',
-      //   icon: '📍',
-      //   lat: 38.000000,
-      //   lng: 21.000000,
-      //   radius: 50,
-      //   video: 'filename.mp4',
-      //   arTitle: 'Τίτλος εμπειρίας AR',
-      //   arDescription: 'Σύντομη περιγραφή.'
-      // }
     ];
 
     // ========================================================================
-    // ΤΕΛΟΣ CONFIG · Από εδώ και κάτω είναι ο κώδικας της εφαρμογής.
+    // STATE
     // ========================================================================
 
     let userPosition = null;
@@ -705,11 +687,16 @@
     let autoFollowUser = true;
     let isProgrammaticMove = false;
     let arSceneActive = false;
+    let savedScrollPosition = 0; // Για να επαναφέρουμε scroll μετά το close
 
     try {
       const saved = localStorage.getItem('completedPois');
       if (saved) completedPois = new Set(JSON.parse(saved));
     } catch(e) {}
+
+    // ========================================================================
+    // UTILITIES
+    // ========================================================================
 
     function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -753,6 +740,10 @@
       const dirs = ['Β', 'ΒΑ', 'Α', 'ΝΑ', 'Ν', 'ΝΔ', 'Δ', 'ΒΔ'];
       return dirs[Math.round(bearing / 45) % 8];
     }
+
+    // ========================================================================
+    // MAP
+    // ========================================================================
 
     function initMap() {
       map = L.map('map', {
@@ -839,6 +830,10 @@
 
       renderPois();
     }
+
+    // ========================================================================
+    // POI RENDERING
+    // ========================================================================
 
     function renderPois() {
       const container = document.getElementById('poiContainer');
@@ -968,6 +963,13 @@
       if (!poi) return;
       currentPoiId = poiId;
 
+      // ── Lock scroll & save θέση ───────────────────────────────────────
+      // Αποθηκεύουμε την τρέχουσα θέση scroll για να την επαναφέρουμε
+      // όταν κλείσει το AR.
+      savedScrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+      document.body.style.top = `-${savedScrollPosition}px`;
+      document.body.classList.add('ar-active');
+
       document.getElementById('arPoiName').textContent = poi.arTitle || poi.name;
       document.getElementById('arPoiDesc').textContent = poi.arDescription || '';
       document.getElementById('arViewer').classList.add('active');
@@ -987,9 +989,14 @@
       const scene = document.createElement('a-scene');
       scene.setAttribute('mindar-image', `imageTargetSrc: ${CONFIG.mindARTargetFile}; autoStart: true; uiScanning: no; uiLoading: no;`);
       scene.setAttribute('color-space', 'sRGB');
-      scene.setAttribute('renderer', 'colorManagement: true, physicallyCorrectLights');
+      scene.setAttribute('renderer', 'colorManagement: true, physicallyCorrectLights: true, alpha: true');
+
+      // ── Disable VR/AR/fullscreen built-in modes ────────────────────────
       scene.setAttribute('vr-mode-ui', 'enabled: false');
+      scene.setAttribute('xr-mode-ui', 'enabled: false');
       scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
+      scene.setAttribute('embedded', 'true'); // εμποδίζει το auto-fullscreen
+
       scene.style.width = '100%';
       scene.style.height = '100%';
 
@@ -1013,36 +1020,53 @@
       const target = document.createElement('a-entity');
       target.setAttribute('mindar-image-target', 'targetIndex: 0');
 
-      // Ξεκινάμε με fallback διαστάσεις από το CONFIG.
-      // Αυτές θα ενημερωθούν αυτόματα όταν το MindAR φορτώσει το target
-      // και μάθουμε το πραγματικό aspect ratio της κάρτας.
       let cardWidth = 1;
       let cardHeight = 1 / CONFIG.cardAspectRatio;
 
-      // Μαύρο background plane που καλύπτει όλη την κάρτα — letterbox effect
-      // ώστε όταν το video δεν γεμίζει την κάρτα, να φαίνεται μαύρο γύρω του.
-      const bgPlane = document.createElement('a-plane');
-      bgPlane.setAttribute('width', cardWidth);
-      bgPlane.setAttribute('height', cardHeight);
-      bgPlane.setAttribute('color', '#000000');
-      bgPlane.setAttribute('position', '0 0 0');
-      target.appendChild(bgPlane);
+      // ── Background plane ──────────────────────────────────────────────
+      // Αν τα videos έχουν alpha (transparent), ΔΕΝ προσθέτουμε μαύρο
+      // background — έτσι θα φαίνεται η πραγματική κάρτα από κάτω.
+      let bgPlane = null;
+      if (!CONFIG.videoHasAlpha) {
+        bgPlane = document.createElement('a-plane');
+        bgPlane.setAttribute('width', cardWidth);
+        bgPlane.setAttribute('height', cardHeight);
+        bgPlane.setAttribute('color', '#000000');
+        bgPlane.setAttribute('position', '0 0 0');
+        target.appendChild(bgPlane);
+      }
 
-      // Ξεκινάμε με placeholder διαστάσεις — θα τις ενημερώσουμε όταν φορτώσει
-      // το video και μάθουμε το πραγματικό aspect ratio.
-      const videoPlane = document.createElement('a-video');
-      videoPlane.setAttribute('src', '#' + videoId);
-      videoPlane.setAttribute('width', cardWidth);
-      videoPlane.setAttribute('height', cardHeight);
-      videoPlane.setAttribute('position', '0 0 0.001'); // ελάχιστο z-offset για να μη z-fight
+      // ── Video plane με transparency support ───────────────────────────
+      // Για WebM με alpha channel χρησιμοποιούμε <a-entity> με material
+      // αντί για <a-video>, γιατί το <a-video> δεν υποστηρίζει transparency.
+      const videoPlane = document.createElement('a-entity');
+      videoPlane.setAttribute('geometry', `primitive: plane; width: ${cardWidth}; height: ${cardHeight}`);
+
+      if (CONFIG.videoHasAlpha) {
+        // Material με transparency — απαραίτητο για alpha channel videos
+        videoPlane.setAttribute('material', `
+          shader: flat;
+          src: #${videoId};
+          transparent: true;
+          alphaTest: 0.01;
+          side: double
+        `);
+      } else {
+        // Standard material χωρίς transparency
+        videoPlane.setAttribute('material', `
+          shader: flat;
+          src: #${videoId};
+          side: double
+        `);
+      }
+
+      videoPlane.setAttribute('position', '0 0 0.001');
       videoPlane.setAttribute('rotation', '0 0 0');
       target.appendChild(videoPlane);
       scene.appendChild(target);
 
-      // ─── Auto-detect του card aspect ratio από το MindAR target ───
-      // Όταν το MindAR φορτώσει το .mind αρχείο, διαβάζουμε τις διαστάσεις
-      // του πρώτου target και υπολογίζουμε το σωστό aspect ratio.
-      let detectedCardAspect = CONFIG.cardAspectRatio; // fallback
+      // ── Auto-detect card aspect ratio από το .mind ───────────────────
+      let detectedCardAspect = CONFIG.cardAspectRatio;
 
       scene.addEventListener('arReady', () => {
         try {
@@ -1053,15 +1077,14 @@
               const [w, h] = firstTarget.dimensions;
               detectedCardAspect = w / h;
 
-              // Ενημέρωση των planes με τις σωστές διαστάσεις
               cardWidth = 1;
               cardHeight = 1 / detectedCardAspect;
-              bgPlane.setAttribute('width', cardWidth);
-              bgPlane.setAttribute('height', cardHeight);
+              if (bgPlane) {
+                bgPlane.setAttribute('width', cardWidth);
+                bgPlane.setAttribute('height', cardHeight);
+              }
 
               console.log(`✓ Card auto-detected: ${w}×${h} px (ratio ${detectedCardAspect.toFixed(3)})`);
-
-              // Επανυπολογίζουμε και το video plane αν τα metadata έχουν φορτώσει
               recalculateVideoPlane();
             }
           }
@@ -1070,10 +1093,7 @@
         }
       });
 
-      // ─── object-fit: contain logic ───
-      // Υπολογίζει σωστές διαστάσεις του video plane ώστε να χωράει στην κάρτα
-      // χωρίς παραμόρφωση/cropping. Καλείται όταν αλλάξει είτε το video είτε
-      // οι διαστάσεις της κάρτας.
+      // ── object-fit: contain ──────────────────────────────────────────
       function recalculateVideoPlane() {
         if (!video.videoWidth || !video.videoHeight) return;
 
@@ -1083,17 +1103,14 @@
         let finalWidth, finalHeight;
 
         if (videoAspect > cardAspect) {
-          // Το video είναι πιο "φαρδύ" από την κάρτα → fit by width
           finalWidth = cardWidth;
           finalHeight = cardWidth / videoAspect;
         } else {
-          // Το video είναι πιο "στενό/ψηλό" από την κάρτα → fit by height
           finalHeight = cardHeight;
           finalWidth = cardHeight * videoAspect;
         }
 
-        videoPlane.setAttribute('width', finalWidth);
-        videoPlane.setAttribute('height', finalHeight);
+        videoPlane.setAttribute('geometry', `primitive: plane; width: ${finalWidth}; height: ${finalHeight}`);
 
         console.log(`Video: ${video.videoWidth}×${video.videoHeight} (ratio ${videoAspect.toFixed(2)}) | Card ratio: ${cardAspect.toFixed(3)} | Plane: ${finalWidth.toFixed(3)}×${finalHeight.toFixed(3)}`);
       }
@@ -1121,6 +1138,7 @@
       const viewer = document.getElementById('arViewer');
       viewer.classList.remove('active');
 
+      // ── Σταματάμε MindAR ──────────────────────────────────────────────
       const container = document.getElementById('arSceneContainer');
       const scene = container.querySelector('a-scene');
       if (scene && scene.systems && scene.systems['mindar-image-system']) {
@@ -1129,6 +1147,24 @@
         } catch(e) {}
       }
       container.innerHTML = '';
+
+      // ── Καθαρισμός του scroll lock & επαναφορά θέσης ─────────────────
+      // Αυτό λύνει το bug όπου μετά το close δεν μπορούσες να κάνεις scroll.
+      document.body.classList.remove('ar-active');
+      document.body.style.top = '';
+      window.scrollTo(0, savedScrollPosition);
+
+      // ── Καθαρισμός τυχόν inline styles που έχει βάλει το A-Frame ─────
+      // Το A-Frame κάποιες φορές αφήνει στυλ στο html/body element που
+      // μπλοκάρουν scroll/touch. Τα καθαρίζουμε ρητά.
+      document.documentElement.style.overflow = '';
+      document.documentElement.style.height = '';
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.touchAction = '';
+
       arSceneActive = false;
       currentPoiId = null;
     }
@@ -1152,7 +1188,10 @@
       }
     }
 
-    // ====== GPS ======
+    // ========================================================================
+    // GPS
+    // ========================================================================
+
     function simulatePosition(lat, lng) {
       useSimulator = true;
       if (watchId !== null) {
@@ -1194,7 +1233,6 @@
       );
     }
 
-    // ====== Simulator buttons (auto-generated από POIS) ======
     function buildSimulatorButtons() {
       const container = document.getElementById('simButtons');
       container.innerHTML = '';
@@ -1221,7 +1259,10 @@
       container.appendChild(realBtn);
     }
 
-    // ====== Init ======
+    // ========================================================================
+    // INIT
+    // ========================================================================
+
     initMap();
     buildSimulatorButtons();
     renderPois();
